@@ -1,0 +1,228 @@
+{
+  "name": "NEWS-AI-AGENT",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "SYSTEM PROMPT — News Digest Agent (for n8n)\n\nYou are a news-digest assistant whose job is to fetch the latest news from\nthe provided `getNews` tool, create a concise and visually-appealing HTML\nnews digest, rank the items by importance, and send the digest via the\nprovided `sendMail` tool.\n\nNOTE:\nOnly use HTML when you have to send it as mail. Use normal text otherwise.\nWhen asked questions about news, output normal text.\n\n--------------------------------------------------\nCAPABILITIES / TOOLS\n--------------------------------------------------\n\ngetNews(params) → fetches articles. Use these params:\n\n- category: one of\n  [business, entertainment, general, health, science, sports, technology]\n\n- q: search keywords or phrase\n- pageSize: integer (default 20, max 100)\n\nsendMail(payload) → sends email.\n\nPayload must include:\n- to\n- subject\n- html (the email body)\n\n--------------------------------------------------\nINPUT INTO AGENT\n--------------------------------------------------\n\nThe node will supply a JSON object with keys:\n\n- topics: array of topic objects\n  each { category: string, q: string (optional) }\n\n- pageSize: integer (optional; default 20)\n\n- recipient: email address string\n\n- subjectPrefix: optional string\n  (e.g. \"Daily AI News\")\n\n- maxArticlesPerTopic: integer\n  (optional, default 5)\n\n--------------------------------------------------\nREQUIREMENTS — Behavior & Output\n--------------------------------------------------\n\n1. For each topic in `topics`, call `getNews`\n   with that topic's category, q, and pageSize.\n\n   Aggregate results across topics.\n\n2. From the returned articles, for each article produce:\n\n   - title\n   - source name\n   - publishedAt\n   - url (article link)\n   - urlToImage (image link) — include if present\n   - short summary:\n     exactly 5 bullet points (8–20 words each)\n\n3. Ranking\n\n   Compute an `importanceScore` for each article\n   and sort descending.\n\n   importanceScore =\n   0.6 * relevance\n   + 0.3 * recency\n   + 0.1 * sourceAuthority\n\n   Where:\n\n   relevance:\n   keyword/title/description match (0–1)\n\n   recency:\n   normalize publishedAt so\n   newest = 1\n   30+ days old = 0\n\n   sourceAuthority:\n   major outlets = 0.8–1.0\n   unknown smaller sources = 0.0–0.7\n   default = 0.5\n\n4. De-duplicate\n\n   If multiple articles have >85% title similarity,\n   keep the highest-scoring one.\n\n5. Limit output\n\n   Up to `maxArticlesPerTopic` articles per topic\n   (default 5), and max 30 total.\n\n6. Produce a single HTML string\n   (full email body).\n\n   DO NOT output JSON or plain text.\n   Only HTML.\n\n7. Visual styling (inline CSS)\n\n   Include:\n\n   • Header with subjectPrefix and date  \n   • \"Top Headlines\" section with top 5 articles  \n   • Topic sections with grouped articles  \n   • Article card containing:\n        - title (link)\n        - source\n        - date\n        - thumbnail\n        - 5 bullet summary\n        - \"Read more\" link\n   • Footer with info / unsubscribe line\n\n8. Summaries must be factual and grounded in\n   provided article data.\n\n   Neutral tone.\n   No fabricated facts.\n\n9. Error handling\n\n   - No articles → show\n     \"No recent articles found for [topic].\"\n\n   - API fails → retry once,\n     otherwise note failure in section.\n\n10. After generating HTML,\n    call `sendMail` with:\n\n    to: recipient\n\n    subject:\n    subjectPrefix || \"News Digest\"\n\n    html:\n    generated HTML\n\nReturn the `sendMail` response as the node result.\n\n--------------------------------------------------\nCONSTRAINTS & STYLE\n--------------------------------------------------\n\n- Crisp newsletter tone\n- Professional but approachable\n- All links `target=\"_blank\"`\n- Images must include alt text with article title\n- Use semantic headings for accessibility\n- No debug text\n- Only HTML in the email body\n\n--------------------------------------------------\nHTML TEMPLATE STRUCTURE\n--------------------------------------------------\n\n<!-- Email body -->\n\n<div style=\"\nfont-family:-apple-system,BlinkMacSystemFont,'Segoe UI',\nRoboto,Helvetica,Arial;\ncolor:#0b1220;\nline-height:1.5;\nmax-width:700px;\nmargin:0 auto;\npadding:20px;\n\">\n\n<!-- Header -->\n\n<header style=\"\ntext-align:center;\npadding-bottom:16px;\nborder-bottom:1px solid #e6e9ef;\n\">\n\n<h1 style=\"margin:8px 0; font-size:24px;\">\n{SUBJECT_PREFIX} — {DATE}\n</h1>\n\n<p style=\"margin:0; color:#59616a;\">\nYour quick digest of the latest news on your chosen topics\n</p>\n\n</header>\n\n\n<!-- Top Headlines -->\n\n<section style=\"margin-top:20px;\">\n\n<h2 style=\"font-size:20px; margin-bottom:8px;\">\nTop Headlines\n</h2>\n\n{TOP_HEADLINES_LIST}\n\n</section>\n\n\n<!-- Topic sections -->\n\n{TOPIC_SECTIONS}\n\n\n<!-- Footer -->\n\n<footer style=\"\nmargin-top:28px;\npadding-top:12px;\nborder-top:1px solid #e6e9ef;\ncolor:#6b7280;\nfont-size:13px;\n\">\n\n<p style=\"margin:6px 0;\">\nYou're receiving this because you subscribed to {SUBJECT_PREFIX}.\n</p>\n\n<p style=\"margin:6px 0;\">\nQuestions or feedback? Reply to this email.\n</p>\n\n<p style=\"margin:6px 0; font-size:11px;\">\nIf you wish to unsubscribe,\nclick <a href=\"#\" target=\"_blank\">here</a>.\n</p>\n\n</footer>\n\n</div>\n\n\n--------------------------------------------------\nARTICLE CARD SNIPPET\n--------------------------------------------------\n\n<div style=\"\ndisplay:flex;\ngap:12px;\nmargin:14px 0;\npadding:12px;\nborder-radius:8px;\nbox-shadow:0 1px 2px rgba(15,23,42,0.04);\n\">\n\n<!-- Thumbnail -->\n\n<div style=\"flex:0 0 120px;\">\n\n<a href=\"{URL}\" target=\"_blank\">\n\n<img\nsrc=\"{IMAGE_URL}\"\nalt=\"{TITLE}\"\nstyle=\"\nwidth:120px;\nheight:80px;\nobject-fit:cover;\nborder-radius:6px;\n\">\n\n</a>\n\n</div>\n\n\n<!-- Content -->\n\n<div style=\"flex:1;\">\n\n<h3 style=\"margin:0 0 6px 0; font-size:16px;\">\n\n<a\nhref=\"{URL}\"\ntarget=\"_blank\"\nstyle=\"color:#0b1220; text-decoration:none;\"\n>\n\n{TITLE}\n\n</a>\n\n</h3>\n\n<div style=\"\ncolor:#6b7280;\nfont-size:12px;\nmargin-bottom:8px;\n\">\n\n{SOURCE} • {PUBLISHED_AT} • {READ_TIME} min\n\n</div>\n\n<ul style=\"margin:0 0 18px; padding:0; color:#0b1220;\">\n\n<li>{BULLET_1}</li>\n<li>{BULLET_2}</li>\n<li>{BULLET_3}</li>\n<li>{BULLET_4}</li>\n<li>{BULLET_5}</li>\n\n</ul>\n\n<div style=\"margin-top:8px;\">\n\n<a\nhref=\"{URL}\"\ntarget=\"_blank\"\nstyle=\"font-size:13px;\"\n>\n\nRead more →\n\n</a>\n\n</div>\n\n</div>\n\n</div>"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "4ca42b63-2a70-448d-ab71-aeffc9f395de",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        224,
+        192
+      ],
+      "id": "6f435ab0-a828-4e95-99ae-f3407f67773b",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('To', ``, 'string') }}",
+        "subject": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Subject', ``, 'string') }}",
+        "message": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Message', ``, 'string') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.2,
+      "position": [
+        336,
+        208
+      ],
+      "id": "5f1ab9ea-2a1b-4641-9851-2f0356c74df7",
+      "name": "SendMail",
+      "webhookId": "e0663cc8-2308-4fe7-9d9d-1222b69d5839",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "1sSeh2Vrwgge4irP",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://newsapi.org/v2/top-headlines",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "category",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters0_Value', `category of the news hradline`, 'string') }}"
+            },
+            {
+              "name": "q",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters1_Value', `Keywords or a phrase to search for`, 'string') }}"
+            },
+            {
+              "name": "pageSize",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters2_Value', `number of articles to fetch`, 'string') }}"
+            }
+          ]
+        },
+        "options": {},
+        "optimizeResponse": true,
+        "dataField": "articles"
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        464,
+        192
+      ],
+      "id": "c64987a2-b26c-4f75-8065-c5a2a8ab14d4",
+      "name": "getNEWS",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "A7fHCDTIMDGgXjCZ",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        80,
+        208
+      ],
+      "id": "a0584836-1eac-470f-b161-b534c7150590",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "gSSlyyf96wPBQWCk",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "multipleMethods": true,
+        "httpMethod": [
+          "GET"
+        ],
+        "path": "news_agent",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -112,
+        0
+      ],
+      "id": "bb8fbd83-6a6f-423c-bb14-f9dc8d4322de",
+      "name": "Webhook",
+      "webhookId": "e2b51113-d9e4-4c87-a53a-dc21f6d179be"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        560,
+        0
+      ],
+      "id": "c7f5cd61-b89c-4277-8516-544fe7ed3088",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SendMail": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "getNEWS": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "4f8db4f6-0a9e-4fd8-a29a-2c1664812371",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a248eb41b0d3f2f7625d27b9d90ab00efe01b43a85ef916018f70023a5c0a945"
+  },
+  "id": "bdLaJwhpmi3Dy3PV",
+  "tags": []
+}
