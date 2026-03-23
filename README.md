@@ -1,4 +1,4 @@
-Demo Video Link - 
+Demo Video Link - https://youtu.be/lCPANTXEMOw?si=AkPteNoSOCkDqhSD
 
 Github JSON file Repo - https://github.com/yashcsv/v0-ai-news-digest_n8n_workflow
 
